@@ -127,12 +127,14 @@ module Database.SQLite3.Bindings (
     c_sqlite3_backup_pagecount,
 
     -- * Session Extension API
+    -- | <https://www.sqlite.org/sessionintro.html>
     c_sqlite3_session_create,
     c_sqlite3_session_delete,
     c_sqlite3_session_attach,
     c_sqlite3_session_changeset,
     c_sqlite3_session_patchset,
     c_sqlite3_session_diff,
+    c_sqlite3_changeset_apply,
 ) where
 
 import Database.SQLite3.Bindings.Types
@@ -585,8 +587,34 @@ foreign import ccall "sqlite3session_diff"
 
 -- | <https://www.sqlite.org/session/sqlite3session_changeset.html>
 foreign import ccall "sqlite3session_changeset"
-    c_sqlite3_session_changeset :: Ptr CSession -> Ptr CInt -> Ptr (Ptr CBytes) -> IO CError
+    c_sqlite3_session_changeset :: Ptr CSession -> Ptr CInt -> Ptr (Ptr CChangeset) -> IO CError
 
 -- | <https://www.sqlite.org/session/sqlite3session_patchset.html>
 foreign import ccall "sqlite3session_patchset"
-    c_sqlite3_session_patchset :: Ptr CSession -> Ptr CInt -> Ptr (Ptr CBytes) -> IO CError
+    c_sqlite3_session_patchset :: Ptr CSession -> Ptr CInt -> Ptr (Ptr CChangeset) -> IO CError
+
+type FilterCallback a
+     = Ptr a   -- ^ Copy of sixth arg to _apply()
+    -> CString -- ^ Table name
+    -> IO CInt -- ^ If the "filter callback" returns zero, then no attempt is made to
+               --   apply any changes to the table. Otherwise, if the return value is non-zero,
+               --   all changes related to the table are attempted.
+
+type ConflictCallback a
+     = Ptr a                -- ^ Copy of sixth arg to _apply()
+    -> CChangesetError      -- ^ DATA, MISSING, CONFLICT, CONSTRAINT
+    -> Ptr CChangesetIter   -- ^ Handle describing change and conflict
+    -> IO CChangesetHandler
+
+-- | <https://www.sqlite.org/session/sqlite3changeset_apply.html>
+foreign import ccall "sqlite3changeset_apply"
+    c_sqlite3_changeset_apply
+        :: Ptr CDatabase               -- ^ Apply change to "main" db of this handle
+        -> CInt                        -- ^ Size of changeset in bytes
+        -> Ptr CChangeset              -- ^ Changeset blob
+        -> FunPtr (FilterCallback a)   -- ^ If it is not NULL, then for each table affected by at least one change
+                                       --   in the changeset, the filter callback is invoked with
+                                       --   the table name as the second argument
+        -> FunPtr (ConflictCallback a)
+        -> Ptr a                       -- ^ First argument passed to FilterCallback and ConflictCallback
+        -> IO CError

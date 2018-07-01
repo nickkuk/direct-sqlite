@@ -12,7 +12,8 @@ module Database.SQLite3.Bindings.Types (
     CBlob,
     CBackup,
     CSession,
-    CBytes,
+    CChangeset,
+    CChangesetIter,
 
     -- * Enumerations
 
@@ -27,6 +28,18 @@ module Database.SQLite3.Bindings.Types (
     decodeColumnType,
     encodeColumnType,
     ColumnType(..),
+
+    -- ** ChangesetError
+    CChangesetError(..),
+    decodeChangesetError,
+    encodeChangesetError,
+    ChangesetError(..),
+
+    -- ** ChangesetHandler
+    CChangesetHandler(..),
+    decodeChangesetHandler,
+    encodeChangesetHandler,
+    ChangesetHandler(..),
 
     -- * Indices
     ParamIndex(..),
@@ -108,6 +121,41 @@ data ColumnType = IntegerColumn
                 | NullColumn
                   deriving (Eq, Show)
 
+-- | <https://www.sqlite.org/session/c_changeset_conflict.html>
+data ChangesetError = ChangesetData       -- ^ When processing a DELETE or UPDATE change, row with
+                                          --   the required PRIMARY KEY fields is present in the database,
+                                          --   but one or more other (non primary-key) fields modified
+                                          --   by the update do not contain the expected "before" values.
+                                          --   The conflicting row, in this case, is the database row with
+                                          --   the matching primary key.
+                    | ChangesetNotFound   -- ^ Row with the required PRIMARY KEY fields is not present
+                                          --   in the database while processing a DELETE or UPDATE change.
+                                          --   There is no conflicting row in this case. The results of
+                                          --   invoking the sqlite3changeset_conflict() API are undefined.
+                    | ChangesetConflict   -- ^ INSERT operation result in duplicate primary key values.
+                                          --   The conflicting row in this case is the database row with
+                                          --   the matching primary key.
+                    | ChangesetConstraint -- ^ If any other constraint violation occurs while applying a change
+                                          --   (i.e. a UNIQUE, CHECK or NOT NULL constraint), the conflict handler
+                                          --   is invoked with CHANGESET_CONSTRAINT as the second argument.
+                                          --   There is no conflicting row in this case. The results of invoking
+                                          --   the sqlite3changeset_conflict() API are undefined.
+                    | ChangesetForeignKey -- ^ If foreign key handling is enabled, and applying a changeset
+                                          --   leaves the database in a state containing foreign key violations,
+                                          --   the conflict handler is invoked with CHANGESET_FOREIGN_KEY as
+                                          --   the second argument exactly once before the changeset is committed.
+                                          --   If the conflict handler returns CHANGESET_OMIT, the changes,
+                                          --   including those that caused the foreign key constraint violation,
+                                          --   are committed. Or, if it returns CHANGESET_ABORT, the changeset is rolled back.
+                                          --   No current or conflicting row information is provided. The only function
+                                          --   it is possible to call on the supplied sqlite3_changeset_iter handle
+                                          --   is sqlite3changeset_fk_conflicts().
+
+-- | <https://www.sqlite.org/session/c_changeset_abort.html>
+data ChangesetHandler = ChangesetOmit
+                      | ChangesetReplace
+                      | ChangesetAbort
+
 -- | <https://www.sqlite.org/c3ref/sqlite3.html>
 --
 -- @CDatabase@ = @sqlite3@
@@ -143,7 +191,12 @@ data CBackup
 -- @CSession@ = @sqlite3_session@
 data CSession
 
-data CBytes
+data CChangeset
+
+-- | <https://www.sqlite.org/session/changeset_iter.html>
+--
+-- @CChangesetIter@ = @sqlite3_changeset_iter@
+data CChangesetIter
 
 -- | Index of a parameter in a parameterized query.
 -- Parameter indices start from 1.
@@ -360,6 +413,48 @@ encodeColumnType t = CColumnType $ case t of
     TextColumn    -> #const SQLITE_TEXT
     BlobColumn    -> #const SQLITE_BLOB
     NullColumn    -> #const SQLITE_NULL
+
+-- | <https://www.sqlite.org/session/c_changeset_conflict.html>
+newtype CChangesetError = CChangesetError CInt
+    deriving (Eq, Show)
+
+-- | Note that this is a partial function.
+-- See 'decodeError' for more information.
+decodeChangesetError :: CChangesetError -> ChangesetError
+decodeChangesetError (CChangesetError n) = case n of
+    #{const SQLITE_CHANGESET_DATA}        -> ChangesetData
+    #{const SQLITE_CHANGESET_NOTFOUND}    -> ChangesetNotFound
+    #{const SQLITE_CHANGESET_CONFLICT}    -> ChangesetConflict
+    #{const SQLITE_CHANGESET_CONSTRAINT}  -> ChangesetConstraint
+    #{const SQLITE_CHANGESET_FOREIGN_KEY} -> ChangesetForeignKey
+    _                                     -> error $ "decodeChangesetError " ++ show n
+
+encodeChangesetError :: ChangesetError -> CChangesetError
+encodeChangesetError t = CChangesetError $ case t of
+    ChangesetData       -> #const SQLITE_CHANGESET_DATA
+    ChangesetNotFound   -> #const SQLITE_CHANGESET_NOTFOUND
+    ChangesetConflict   -> #const SQLITE_CHANGESET_CONFLICT
+    ChangesetConstraint -> #const SQLITE_CHANGESET_CONSTRAINT
+    ChangesetForeignKey -> #const SQLITE_CHANGESET_FOREIGN_KEY
+
+-- | <https://www.sqlite.org/session/c_changeset_abort.html>
+newtype CChangesetHandler = CChangesetHandler CInt
+    deriving (Eq, Show)
+
+-- | Note that this is a partial function.
+-- See 'decodeError' for more information.
+decodeChangesetHandler :: CChangesetHandler -> ChangesetHandler
+decodeChangesetHandler (CChangesetHandler n) = case n of
+    #{const SQLITE_CHANGESET_OMIT}    -> ChangesetOmit
+    #{const SQLITE_CHANGESET_REPLACE} -> ChangesetReplace
+    #{const SQLITE_CHANGESET_ABORT}   -> ChangesetAbort
+    _                                 -> error $ "decodeChangesetHandler " ++ show n
+
+encodeChangesetHandler :: ChangesetHandler -> CChangesetHandler
+encodeChangesetHandler t = CChangesetHandler $ case t of
+    ChangesetOmit    -> #const SQLITE_CHANGESET_OMIT
+    ChangesetReplace -> #const SQLITE_CHANGESET_REPLACE
+    ChangesetAbort   -> #const SQLITE_CHANGESET_ABORT
 
 ------------------------------------------------------------------------
 -- Conversion to and from FFI types

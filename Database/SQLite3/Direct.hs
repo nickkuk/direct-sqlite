@@ -130,7 +130,6 @@ module Database.SQLite3.Direct (
     Backup(..),
     Session(..),
     Changeset(..),
-    Patchset(..),
 
     -- ** Results and errors
     StepResult(..),
@@ -1024,11 +1023,8 @@ sessionDiff session dbName tblName = mask_ $ sessionDiff' session dbName tblName
 newtype Changeset = Changeset ByteString
   deriving (Eq, Show)
 
-newtype Patchset = Patchset ByteString
-  deriving (Eq, Show)
-
-sessionChanges' :: Session -> (Ptr CSession -> Ptr CInt -> Ptr (Ptr CBytes) -> IO CError) ->
-  IO (Either Error (Int, Ptr CBytes))
+sessionChanges' :: Session -> (Ptr CSession -> Ptr CInt -> Ptr (Ptr CChangeset) -> IO CError) ->
+  IO (Either Error (Int, Ptr CChangeset))
 sessionChanges' (Session session) func =
   alloca $ \plen ->
     alloca $ \ppatch -> do
@@ -1037,19 +1033,19 @@ sessionChanges' (Session session) func =
         Left err -> pure (Left err)
         Right () -> (\len patch -> (Right (fromIntegral len, patch))) <$> peek plen <*> peek ppatch
 
-sessionChanges :: Session -> (Ptr CSession -> Ptr CInt -> Ptr (Ptr CBytes) -> IO CError) ->
-  IO (Either Error ByteString)
+sessionChanges :: Session -> (Ptr CSession -> Ptr CInt -> Ptr (Ptr CChangeset) -> IO CError) ->
+  IO (Either Error Changeset)
 sessionChanges session func = mask_ $
   sessionChanges' session func >>= \case
     Left err -> pure (Left err)
     Right (len, patch) -> do
       bs <- BSU.unsafePackCStringFinalizer (castPtr patch) len (c_sqlite3_free patch)
-      pure (Right bs)
+      pure (Right (Changeset bs))
 
 -- | <https://www.sqlite.org/session/sqlite3session_changeset.html>
 sessionChangeset :: Session -> IO (Either Error Changeset)
-sessionChangeset session = fmap Changeset <$> sessionChanges session c_sqlite3_session_changeset
+sessionChangeset session = sessionChanges session c_sqlite3_session_changeset
 
 -- | <https://www.sqlite.org/session/sqlite3session_patchset.html>
-sessionPatchset :: Session -> IO (Either Error Patchset)
-sessionPatchset session = fmap Patchset <$> sessionChanges session c_sqlite3_session_patchset
+sessionPatchset :: Session -> IO (Either Error Changeset)
+sessionPatchset session = sessionChanges session c_sqlite3_session_patchset
