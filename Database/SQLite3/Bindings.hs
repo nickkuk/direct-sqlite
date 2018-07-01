@@ -129,6 +129,7 @@ module Database.SQLite3.Bindings (
     -- * Session Extension API
     c_sqlite3_session_create,
     c_sqlite3_session_delete,
+    c_sqlite3_session_attach,
     c_sqlite3_session_patchset,
     c_sqlite3_session_diff,
 ) where
@@ -572,6 +573,10 @@ foreign import ccall "sqlite3session_create"
 -- | <https://www.sqlite.org/session/sqlite3session_delete.html>
 foreign import ccall "sqlite3session_delete"
     c_sqlite3_session_delete :: Ptr CSession -> IO ()
+
+-- | <https://www.sqlite.org/session/sqlite3session_attach.html>
+foreign import ccall "sqlite3session_attach"
+    c_sqlite3_session_attach :: Ptr CSession -> CString -> IO CError
 
 -- | <https://www.sqlite.org/session/sqlite3session_diff.html>
 foreign import ccall "sqlite3session_diff"

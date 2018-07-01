@@ -115,6 +115,7 @@ module Database.SQLite3.Direct (
     -- * Session Extension API
     sessionCreate,
     sessionDelete,
+    sessionAttach,
     sessionDiff,
     sessionPatchset,
 
@@ -983,6 +984,19 @@ sessionCreate (Database db) (Utf8 name) =
 -- | <https://www.sqlite.org/session/sqlite3session_delete.html>
 sessionDelete :: Session -> IO ()
 sessionDelete (Session session) = c_sqlite3_session_delete session
+
+mUseAsCString :: Maybe Utf8 -> (CString -> IO a) -> IO a
+mUseAsCString Nothing action = action nullPtr
+mUseAsCString (Just (Utf8 bs)) action = BS.useAsCString bs action
+
+-- | <https://www.sqlite.org/session/sqlite3session_attach.html>
+sessionAttach :: Session -> Maybe Utf8 -> IO (Either Error ())
+sessionAttach (Session session) mTblName =
+  mUseAsCString mTblName $ \tblName -> do
+    rc <- c_sqlite3_session_attach session tblName
+    case toResult () rc of
+      Left err -> pure (Left err)
+      Right () -> pure (Right ())
 
 sessionDiff' :: Session -> Utf8 -> Utf8 -> IO (Either CString ())
 sessionDiff' (Session session) (Utf8 dbName) (Utf8 tblName) =
