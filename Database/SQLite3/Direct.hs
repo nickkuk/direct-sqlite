@@ -978,9 +978,7 @@ sessionCreate (Database db) (Utf8 name) =
       alloca $ \psession -> do
         rc <- c_sqlite3_session_create db name' psession
         session <- peek psession
-        case toResult () rc of
-            Left err -> pure (Left err)
-            Right () -> pure (Right (Session session))
+        return (toResult (Session session) rc)
 
 -- | <https://www.sqlite.org/session/sqlite3session_delete.html>
 sessionDelete :: Session -> IO ()
@@ -995,9 +993,7 @@ sessionAttach :: Session -> Maybe Utf8 -> IO (Either Error ())
 sessionAttach (Session session) mTblName =
   mUseAsCString mTblName $ \tblName -> do
     rc <- c_sqlite3_session_attach session tblName
-    case toResult () rc of
-      Left err -> pure (Left err)
-      Right () -> pure (Right ())
+    return (toResult () rc)
 
 sessionDiff' :: Session -> Utf8 -> Utf8 -> IO (Either CString ())
 sessionDiff' (Session session) (Utf8 dbName) (Utf8 tblName) =
@@ -1029,9 +1025,7 @@ sessionChanges' (Session session) func =
   alloca $ \plen ->
     alloca $ \ppatch -> do
       rc <- func session plen ppatch
-      case toResult () rc of
-        Left err -> pure (Left err)
-        Right () -> (\len patch -> (Right (fromIntegral len, patch))) <$> peek plen <*> peek ppatch
+      toResultM ((\len patch -> (fromIntegral len, patch)) <$> peek plen <*> peek ppatch) rc
 
 sessionChanges :: Session -> (Ptr CSession -> Ptr CInt -> Ptr (Ptr CChangeset) -> IO CError) ->
   IO (Either Error Changeset)
