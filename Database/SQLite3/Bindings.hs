@@ -125,6 +125,12 @@ module Database.SQLite3.Bindings (
     c_sqlite3_backup_step,
     c_sqlite3_backup_remaining,
     c_sqlite3_backup_pagecount,
+
+    -- * Session Extension API
+    c_sqlite3_session_create,
+    c_sqlite3_session_delete,
+    c_sqlite3_session_patchset,
+    c_sqlite3_session_diff,
 ) where
 
 import Database.SQLite3.Bindings.Types
@@ -558,3 +564,19 @@ foreign import ccall unsafe "sqlite3_backup_remaining"
 -- | <https://www.sqlite.org/c3ref/backup_finish.html#sqlite3backuppagecount>
 foreign import ccall unsafe "sqlite3_backup_pagecount"
     c_sqlite3_backup_pagecount :: Ptr CBackup -> IO CInt
+
+-- | <https://www.sqlite.org/session/sqlite3session_create.html>
+foreign import ccall "sqlite3session_create"
+    c_sqlite3_session_create :: Ptr CDatabase -> CString -> Ptr (Ptr CSession) -> IO CError
+
+-- | <https://www.sqlite.org/session/sqlite3session_delete.html>
+foreign import ccall "sqlite3session_delete"
+    c_sqlite3_session_delete :: Ptr CSession -> IO ()
+
+-- | <https://www.sqlite.org/session/sqlite3session_diff.html>
+foreign import ccall "sqlite3session_diff"
+    c_sqlite3_session_diff :: Ptr CSession -> CString -> CString -> Ptr CString -> IO CError
+
+-- | <https://www.sqlite.org/session/sqlite3session_patchset.html>
+foreign import ccall "sqlite3session_patchset"
+    c_sqlite3_session_patchset :: Ptr CSession -> Ptr CInt -> Ptr (Ptr CPatchset) -> IO CError

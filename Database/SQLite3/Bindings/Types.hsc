@@ -11,6 +11,8 @@ module Database.SQLite3.Bindings.Types (
     CContext,
     CBlob,
     CBackup,
+    CSession,
+    CPatchset,
 
     -- * Enumerations
 
@@ -135,6 +137,13 @@ data CBlob
 --
 -- @CBackup@ = @sqlite3_backup@
 data CBackup
+
+-- | <https://www.sqlite.org/session/session.html>
+--
+-- @CSession@ = @sqlite3_session@
+data CSession
+
+data CPatchset
 
 -- | Index of a parameter in a parameterized query.
 -- Parameter indices start from 1.

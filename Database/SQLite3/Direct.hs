@@ -1,5 +1,6 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 -- |
 -- This API is a slightly lower-level version of "Database.SQLite3".  Namely:
@@ -111,6 +112,12 @@ module Database.SQLite3.Direct (
     backupRemaining,
     backupPagecount,
 
+    -- * Session Extension API
+    sessionCreate,
+    sessionDelete,
+    sessionDiff,
+    sessionPatchset,
+
     -- * Types
     Database(..),
     Statement(..),
@@ -119,6 +126,8 @@ module Database.SQLite3.Direct (
     FuncArgs(..),
     Blob(..),
     Backup(..),
+    Session(..),
+    Patchset(..),
 
     -- ** Results and errors
     StepResult(..),
@@ -954,3 +963,68 @@ backupRemaining (Backup _ backup) =
 backupPagecount :: Backup -> IO Int
 backupPagecount (Backup _ backup) =
     fromIntegral <$> c_sqlite3_backup_pagecount backup
+
+------------------------------------------------------------------------
+
+newtype Session = Session (Ptr CSession)
+    deriving (Eq, Show)
+
+-- | <https://www.sqlite.org/session/sqlite3session_create.html>
+sessionCreate :: Database -> Utf8 -> IO (Either Error Session)
+sessionCreate (Database db) (Utf8 name) =
+    BS.useAsCString name $ \name' ->
+      alloca $ \psession -> do
+        rc <- c_sqlite3_session_create db name' psession
+        session <- peek psession
+        case toResult () rc of
+            Left err -> pure (Left err)
+            Right () -> pure (Right (Session session))
+
+-- | <https://www.sqlite.org/session/sqlite3session_delete.html>
+sessionDelete :: Session -> IO ()
+sessionDelete (Session session) = c_sqlite3_session_delete session
+
+sqliteFree :: FunPtr (CFuncDestroy a)
+sqliteFree = IOU.unsafePerformIO $ mkCFuncDestroy c_sqlite3_free
+{-# NOINLINE sqliteFree #-}
+
+sessionDiff' :: Session -> Utf8 -> Utf8 -> IO (Either CString ())
+sessionDiff' (Session session) (Utf8 dbName) (Utf8 tblName) =
+  BS.useAsCString dbName $ \dbName' ->
+    BS.useAsCString tblName $ \tblName' ->
+      alloca $ \perr -> do
+        poke perr nullPtr
+        rc <- c_sqlite3_session_diff session dbName' tblName' perr
+        case toResult () rc of
+          Left _ -> Left <$> peek perr
+          Right () -> pure (Right ())
+
+-- | <https://www.sqlite.org/session/sqlite3session_diff.html>
+sessionDiff :: Session -> Utf8 -> Utf8 -> IO (Either Utf8 ())
+sessionDiff session dbName tblName = mask_ $ sessionDiff' session dbName tblName >>= \case
+  Left err  | err /= nullPtr -> do
+                fptr <- newForeignPtr sqliteFree err
+                len <- BSI.c_strlen err
+                pure (Left (Utf8 (BSI.fromForeignPtr (castForeignPtr fptr) 0 (fromIntegral len))))
+            | otherwise -> pure (Left (Utf8 mempty))
+  Right () -> pure (Right ())
+
+newtype Patchset = Patchset ByteString
+  deriving (Eq, Show)
+
+sessionPatchset' :: Session -> IO (Either Error (Int, Ptr CPatchset))
+sessionPatchset' (Session session) =
+  alloca $ \plen ->
+    alloca $ \ppatch -> do
+      rc <- c_sqlite3_session_patchset session plen ppatch
+      case toResult () rc of
+        Left err -> pure (Left err)
+        Right () -> (\len patch -> (Right (fromIntegral len, patch))) <$> peek plen <*> peek ppatch
+
+-- | <https://www.sqlite.org/session/sqlite3session_patchset.html>
+sessionPatchset :: Session -> IO (Either Error Patchset)
+sessionPatchset session = mask_ $ sessionPatchset' session >>= \case
+  Left err -> pure (Left err)
+  Right (len, patch) -> do
+    fptr <- newForeignPtr sqliteFree patch
+    pure (Right (Patchset (BSI.fromForeignPtr (castForeignPtr fptr) 0 len)))
