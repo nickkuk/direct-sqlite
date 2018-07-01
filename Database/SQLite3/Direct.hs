@@ -1043,3 +1043,11 @@ sessionChangeset session = sessionChanges session c_sqlite3_session_changeset
 -- | <https://www.sqlite.org/session/sqlite3session_patchset.html>
 sessionPatchset :: Session -> IO (Either Error Changeset)
 sessionPatchset session = sessionChanges session c_sqlite3_session_patchset
+
+-- type FilterCallback = Utf8 -> IO Bool
+
+-- mkFilterCallback :: FilterCallback -> IO (FunPtr (CFilterCallback a))
+-- mkFilterCallback
+
+-- | <https://www.sqlite.org/session/sqlite3changeset_apply.html>
+-- changesetApply :: Database -> Changeset
