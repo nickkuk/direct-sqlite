@@ -117,6 +117,7 @@ module Database.SQLite3.Direct (
     sessionDelete,
     sessionAttach,
     sessionDiff,
+    sessionChangeset,
     sessionPatchset,
 
     -- * Types
@@ -128,6 +129,7 @@ module Database.SQLite3.Direct (
     Blob(..),
     Backup(..),
     Session(..),
+    Changeset(..),
     Patchset(..),
 
     -- ** Results and errors
@@ -1019,22 +1021,35 @@ sessionDiff session dbName tblName = mask_ $ sessionDiff' session dbName tblName
             | otherwise -> pure (Left (Utf8 mempty))
   Right () -> pure (Right ())
 
+newtype Changeset = Changeset ByteString
+  deriving (Eq, Show)
+
 newtype Patchset = Patchset ByteString
   deriving (Eq, Show)
 
-sessionPatchset' :: Session -> IO (Either Error (Int, Ptr CPatchset))
-sessionPatchset' (Session session) =
+sessionChanges' :: Session -> (Ptr CSession -> Ptr CInt -> Ptr (Ptr CBytes) -> IO CError) ->
+  IO (Either Error (Int, Ptr CBytes))
+sessionChanges' (Session session) func =
   alloca $ \plen ->
     alloca $ \ppatch -> do
-      rc <- c_sqlite3_session_patchset session plen ppatch
+      rc <- func session plen ppatch
       case toResult () rc of
         Left err -> pure (Left err)
         Right () -> (\len patch -> (Right (fromIntegral len, patch))) <$> peek plen <*> peek ppatch
 
+sessionChanges :: Session -> (Ptr CSession -> Ptr CInt -> Ptr (Ptr CBytes) -> IO CError) ->
+  IO (Either Error ByteString)
+sessionChanges session func = mask_ $
+  sessionChanges' session func >>= \case
+    Left err -> pure (Left err)
+    Right (len, patch) -> do
+      bs <- BSU.unsafePackCStringFinalizer (castPtr patch) len (c_sqlite3_free patch)
+      pure (Right bs)
+
+-- | <https://www.sqlite.org/session/sqlite3session_changeset.html>
+sessionChangeset :: Session -> IO (Either Error Changeset)
+sessionChangeset session = fmap Changeset <$> sessionChanges session c_sqlite3_session_changeset
+
 -- | <https://www.sqlite.org/session/sqlite3session_patchset.html>
 sessionPatchset :: Session -> IO (Either Error Patchset)
-sessionPatchset session = mask_ $ sessionPatchset' session >>= \case
-  Left err -> pure (Left err)
-  Right (len, patch) -> do
-    bs <- BSU.unsafePackCStringFinalizer (castPtr patch) len (c_sqlite3_free patch)
-    pure (Right (Patchset bs))
+sessionPatchset session = fmap Patchset <$> sessionChanges session c_sqlite3_session_patchset

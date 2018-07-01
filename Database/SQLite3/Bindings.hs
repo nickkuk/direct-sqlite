@@ -130,6 +130,7 @@ module Database.SQLite3.Bindings (
     c_sqlite3_session_create,
     c_sqlite3_session_delete,
     c_sqlite3_session_attach,
+    c_sqlite3_session_changeset,
     c_sqlite3_session_patchset,
     c_sqlite3_session_diff,
 ) where
@@ -582,6 +583,10 @@ foreign import ccall "sqlite3session_attach"
 foreign import ccall "sqlite3session_diff"
     c_sqlite3_session_diff :: Ptr CSession -> CString -> CString -> Ptr CString -> IO CError
 
+-- | <https://www.sqlite.org/session/sqlite3session_changeset.html>
+foreign import ccall "sqlite3session_changeset"
+    c_sqlite3_session_changeset :: Ptr CSession -> Ptr CInt -> Ptr (Ptr CBytes) -> IO CError
+
 -- | <https://www.sqlite.org/session/sqlite3session_patchset.html>
 foreign import ccall "sqlite3session_patchset"
-    c_sqlite3_session_patchset :: Ptr CSession -> Ptr CInt -> Ptr (Ptr CPatchset) -> IO CError
+    c_sqlite3_session_patchset :: Ptr CSession -> Ptr CInt -> Ptr (Ptr CBytes) -> IO CError
