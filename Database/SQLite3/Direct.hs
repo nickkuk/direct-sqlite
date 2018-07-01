@@ -984,10 +984,6 @@ sessionCreate (Database db) (Utf8 name) =
 sessionDelete :: Session -> IO ()
 sessionDelete (Session session) = c_sqlite3_session_delete session
 
-sqliteFree :: FunPtr (CFuncDestroy a)
-sqliteFree = IOU.unsafePerformIO $ mkCFuncDestroy c_sqlite3_free
-{-# NOINLINE sqliteFree #-}
-
 sessionDiff' :: Session -> Utf8 -> Utf8 -> IO (Either CString ())
 sessionDiff' (Session session) (Utf8 dbName) (Utf8 tblName) =
   BS.useAsCString dbName $ \dbName' ->
@@ -1003,9 +999,9 @@ sessionDiff' (Session session) (Utf8 dbName) (Utf8 tblName) =
 sessionDiff :: Session -> Utf8 -> Utf8 -> IO (Either Utf8 ())
 sessionDiff session dbName tblName = mask_ $ sessionDiff' session dbName tblName >>= \case
   Left err  | err /= nullPtr -> do
-                fptr <- newForeignPtr sqliteFree err
                 len <- BSI.c_strlen err
-                pure (Left (Utf8 (BSI.fromForeignPtr (castForeignPtr fptr) 0 (fromIntegral len))))
+                bs <- BSU.unsafePackCStringFinalizer (castPtr err) (fromIntegral len) (c_sqlite3_free err)
+                pure (Left (Utf8 bs))
             | otherwise -> pure (Left (Utf8 mempty))
   Right () -> pure (Right ())
 
@@ -1026,5 +1022,5 @@ sessionPatchset :: Session -> IO (Either Error Patchset)
 sessionPatchset session = mask_ $ sessionPatchset' session >>= \case
   Left err -> pure (Left err)
   Right (len, patch) -> do
-    fptr <- newForeignPtr sqliteFree patch
-    pure (Right (Patchset (BSI.fromForeignPtr (castForeignPtr fptr) 0 len)))
+    bs <- BSU.unsafePackCStringFinalizer (castPtr patch) len (c_sqlite3_free patch)
+    pure (Right (Patchset bs))
