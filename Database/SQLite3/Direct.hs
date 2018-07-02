@@ -978,7 +978,7 @@ sessionCreate
     -> IO (Either Error Session)
 sessionCreate (Database db) (Utf8 name) =
     BS.useAsCString name $ \name' ->
-        alloca $ \psession -> do
+        alloca $ \psession -> mask_ $ do
             rc <- c_sqlite3_session_create db name' psession
             session <- peek psession
             return (toResult (Session session) rc)
@@ -997,9 +997,8 @@ sessionAttach
     -> Maybe Utf8  -- ^ Name of the table to attach; use Nothing to attach all tables.
     -> IO (Either Error ())
 sessionAttach (Session session) mTblName =
-    mUseAsCString mTblName $ \tblName -> do
-        rc <- c_sqlite3_session_attach session tblName
-        return (toResult () rc)
+    mUseAsCString mTblName $
+        fmap (toResult ()) . c_sqlite3_session_attach session
 
 -- | <https://www.sqlite.org/session/sqlite3session_diff.html>
 sessionDiff
