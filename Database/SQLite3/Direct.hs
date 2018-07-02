@@ -972,7 +972,10 @@ newtype Session = Session (Ptr CSession)
     deriving (Eq, Show)
 
 -- | <https://www.sqlite.org/session/sqlite3session_create.html>
-sessionCreate :: Database -> Utf8 -> IO (Either Error Session)
+sessionCreate
+    :: Database  -- ^ Database connection.
+    -> Utf8      -- ^ Symbolic name of database (e.g. "main").
+    -> IO (Either Error Session)
 sessionCreate (Database db) (Utf8 name) =
     BS.useAsCString name $ \name' ->
       alloca $ \psession -> do
@@ -989,7 +992,10 @@ mUseAsCString Nothing action = action nullPtr
 mUseAsCString (Just (Utf8 bs)) action = BS.useAsCString bs action
 
 -- | <https://www.sqlite.org/session/sqlite3session_attach.html>
-sessionAttach :: Session -> Maybe Utf8 -> IO (Either Error ())
+sessionAttach
+    :: Session     -- ^ Session with attached database.
+    -> Maybe Utf8  -- ^ Name of the table to attach; use Nothing to attach all tables.
+    -> IO (Either Error ())
 sessionAttach (Session session) mTblName =
   mUseAsCString mTblName $ \tblName -> do
     rc <- c_sqlite3_session_attach session tblName
