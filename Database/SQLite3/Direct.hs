@@ -978,10 +978,10 @@ sessionCreate
     -> IO (Either Error Session)
 sessionCreate (Database db) (Utf8 name) =
     BS.useAsCString name $ \name' ->
-      alloca $ \psession -> do
-        rc <- c_sqlite3_session_create db name' psession
-        session <- peek psession
-        return (toResult (Session session) rc)
+        alloca $ \psession -> do
+            rc <- c_sqlite3_session_create db name' psession
+            session <- peek psession
+            return (toResult (Session session) rc)
 
 -- | <https://www.sqlite.org/session/sqlite3session_delete.html>
 sessionDelete :: Session -> IO ()
@@ -997,9 +997,9 @@ sessionAttach
     -> Maybe Utf8  -- ^ Name of the table to attach; use Nothing to attach all tables.
     -> IO (Either Error ())
 sessionAttach (Session session) mTblName =
-  mUseAsCString mTblName $ \tblName -> do
-    rc <- c_sqlite3_session_attach session tblName
-    return (toResult () rc)
+    mUseAsCString mTblName $ \tblName -> do
+        rc <- c_sqlite3_session_attach session tblName
+        return (toResult () rc)
 
 -- | <https://www.sqlite.org/session/sqlite3session_diff.html>
 sessionDiff
@@ -1018,19 +1018,19 @@ newtype Changeset = Changeset ByteString
 sessionChanges' :: Session -> (Ptr CSession -> Ptr CInt -> Ptr (Ptr CChangeset) -> IO CError) ->
   IO (Either Error (Int, Ptr CChangeset))
 sessionChanges' (Session session) func =
-  alloca $ \plen ->
-    alloca $ \ppatch -> do
-      rc <- func session plen ppatch
-      toResultM ((\len patch -> (fromIntegral len, patch)) <$> peek plen <*> peek ppatch) rc
+    alloca $ \plen ->
+        alloca $ \ppatch -> do
+            rc <- func session plen ppatch
+            toResultM ((\len patch -> (fromIntegral len, patch)) <$> peek plen <*> peek ppatch) rc
 
 sessionChanges :: Session -> (Ptr CSession -> Ptr CInt -> Ptr (Ptr CChangeset) -> IO CError) ->
   IO (Either Error Changeset)
 sessionChanges session func = mask_ $
-  sessionChanges' session func >>= \case
-    Left err -> pure (Left err)
-    Right (len, patch) -> do
-      bs <- BSU.unsafePackCStringFinalizer (castPtr patch) len (c_sqlite3_free patch)
-      pure (Right (Changeset bs))
+    sessionChanges' session func >>= \case
+        Left err -> pure (Left err)
+        Right (len, patch) -> do
+            bs <- BSU.unsafePackCStringFinalizer (castPtr patch) len (c_sqlite3_free patch)
+            pure (Right (Changeset bs))
 
 -- | <https://www.sqlite.org/session/sqlite3session_changeset.html>
 sessionChangeset :: Session -> IO (Either Error Changeset)
