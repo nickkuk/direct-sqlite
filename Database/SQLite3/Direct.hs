@@ -995,26 +995,16 @@ sessionAttach (Session session) mTblName =
     rc <- c_sqlite3_session_attach session tblName
     return (toResult () rc)
 
-sessionDiff' :: Session -> Utf8 -> Utf8 -> IO (Either CString ())
-sessionDiff' (Session session) (Utf8 dbName) (Utf8 tblName) =
-  BS.useAsCString dbName $ \dbName' ->
-    BS.useAsCString tblName $ \tblName' ->
-      alloca $ \perr -> do
-        poke perr nullPtr
-        rc <- c_sqlite3_session_diff session dbName' tblName' perr
-        case toResult () rc of
-          Left _ -> Left <$> peek perr
-          Right () -> pure (Right ())
-
 -- | <https://www.sqlite.org/session/sqlite3session_diff.html>
-sessionDiff :: Session -> Utf8 -> Utf8 -> IO (Either Utf8 ())
-sessionDiff session dbName tblName = mask_ $ sessionDiff' session dbName tblName >>= \case
-  Left err  | err /= nullPtr -> do
-                len <- BSI.c_strlen err
-                bs <- BSU.unsafePackCStringFinalizer (castPtr err) (fromIntegral len) (c_sqlite3_free err)
-                pure (Left (Utf8 bs))
-            | otherwise -> pure (Left (Utf8 mempty))
-  Right () -> pure (Right ())
+sessionDiff
+    :: Session  -- ^ Session with attached first database and attached table to compare.
+    -> Utf8     -- ^ The symbolic name of second database.
+    -> Utf8     -- ^ Name of the table to compare.
+    -> IO (Either (Error, Utf8) ())
+sessionDiff (Session session) (Utf8 dbName) (Utf8 tblName) =
+    BS.useAsCString dbName $ \dbName' ->
+        BS.useAsCString tblName $ \tblName' ->
+            withErrorMessagePtr (c_sqlite3_session_diff session dbName' tblName')
 
 newtype Changeset = Changeset ByteString
   deriving (Eq, Show)
