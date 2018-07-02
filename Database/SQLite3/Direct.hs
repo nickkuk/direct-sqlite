@@ -977,11 +977,10 @@ sessionCreate
     -> Utf8      -- ^ Symbolic name of database (e.g. "main").
     -> IO (Either Error Session)
 sessionCreate (Database db) (Utf8 name) =
-    BS.useAsCString name $ \name' ->
-        alloca $ \psession -> mask_ $ do
-            rc <- c_sqlite3_session_create db name' psession
-            session <- peek psession
-            return (toResult (Session session) rc)
+    BS.useAsCString name $ \name' -> alloca $ \psession -> mask_ $ do
+        rc <- c_sqlite3_session_create db name' psession
+        session <- peek psession
+        return (toResult (Session session) rc)
 
 -- | <https://www.sqlite.org/session/sqlite3session_delete.html>
 sessionDelete :: Session -> IO ()
@@ -1012,24 +1011,20 @@ sessionDiff (Session session) (Utf8 dbName) (Utf8 tblName) =
             withErrorMessagePtr (c_sqlite3_session_diff session dbName' tblName')
 
 newtype Changeset = Changeset ByteString
-  deriving (Eq, Show)
-
-sessionChanges' :: Session -> (Ptr CSession -> Ptr CInt -> Ptr (Ptr CChangeset) -> IO CError) ->
-  IO (Either Error (Int, Ptr CChangeset))
-sessionChanges' (Session session) func =
-    alloca $ \plen ->
-        alloca $ \ppatch -> do
-            rc <- func session plen ppatch
-            toResultM ((\len patch -> (fromIntegral len, patch)) <$> peek plen <*> peek ppatch) rc
+    deriving (Eq, Show)
 
 sessionChanges :: Session -> (Ptr CSession -> Ptr CInt -> Ptr (Ptr CChangeset) -> IO CError) ->
-  IO (Either Error Changeset)
-sessionChanges session func = mask_ $
-    sessionChanges' session func >>= \case
-        Left err -> pure (Left err)
-        Right (len, patch) -> do
-            bs <- BSU.unsafePackCStringFinalizer (castPtr patch) len (c_sqlite3_free patch)
-            pure (Right (Changeset bs))
+    IO (Either Error Changeset)
+sessionChanges (Session session) func =
+    alloca $ \plen -> alloca $ \pchange -> mask $ \restore -> do
+        poke pchange nullPtr
+        rc <- restore (func session plen pchange)
+            `onException` (peek pchange >>= c_sqlite3_free)
+        flip toResultM rc $ do
+            fp <- newForeignPtr c_sqlite3_free_p pchange
+            len <- peek plen
+            let bs = BSI.fromForeignPtr (castForeignPtr fp) 0 (fromIntegral len)
+            return (Changeset bs)
 
 -- | <https://www.sqlite.org/session/sqlite3session_changeset.html>
 sessionChangeset :: Session -> IO (Either Error Changeset)
