@@ -976,7 +976,7 @@ sessionCreate
     -> Utf8      -- ^ Symbolic name of database (e.g. "main").
     -> IO (Either Error Session)
 sessionCreate (Database db) (Utf8 name) =
-    BS.useAsCString name $ \name' -> alloca $ \psession -> mask_ $ do
+    BS.useAsCString name $ \name' -> alloca $ \psession -> do
         rc <- c_sqlite3_session_create db name' psession
         session <- peek psession
         return (toResult (Session session) rc)
