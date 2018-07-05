@@ -41,6 +41,12 @@ module Database.SQLite3.Bindings.Types (
     encodeChangesetHandler,
     ChangesetHandler(..),
 
+    -- ** ChangesetOp
+    CChangesetOp(..),
+    decodeChangesetOp,
+    encodeChangesetOp,
+    ChangesetOp(..),
+
     -- * Indices
     ParamIndex(..),
     ColumnIndex(..),
@@ -155,6 +161,11 @@ data ChangesetError = ChangesetData       -- ^ When processing a DELETE or UPDAT
 data ChangesetHandler = ChangesetOmit
                       | ChangesetReplace
                       | ChangesetAbort
+
+-- | <https://www.sqlite.org/c3ref/c_alter_table.html>
+data ChangesetOp = ChangesetInsert
+                 | ChangesetDelete
+                 | ChangesetUpdate
 
 -- | <https://www.sqlite.org/c3ref/sqlite3.html>
 --
@@ -455,6 +466,25 @@ encodeChangesetHandler t = CChangesetHandler $ case t of
     ChangesetOmit    -> #const SQLITE_CHANGESET_OMIT
     ChangesetReplace -> #const SQLITE_CHANGESET_REPLACE
     ChangesetAbort   -> #const SQLITE_CHANGESET_ABORT
+
+-- | <https://www.sqlite.org/c3ref/c_alter_table.html>
+newtype CChangesetOp = CChangesetOp CInt
+    deriving (Eq, Show)
+
+-- | Note that this is a partial function.
+-- See 'decodeError' for more information.
+decodeChangesetOp :: CChangesetOp -> ChangesetOp
+decodeChangesetOp (CChangesetOp n) = case n of
+    #{const SQLITE_INSERT} -> ChangesetInsert
+    #{const SQLITE_DELETE} -> ChangesetDelete
+    #{const SQLITE_UPDATE} -> ChangesetUpdate
+    _                      -> error $ "decodeChangesetOp " ++ show n
+
+encodeChangesetOp :: ChangesetOp -> CChangesetOp
+encodeChangesetOp t = CChangesetOp $ case t of
+    ChangesetInsert -> #const SQLITE_INSERT
+    ChangesetDelete -> #const SQLITE_DELETE
+    ChangesetUpdate -> #const SQLITE_UPDATE
 
 ------------------------------------------------------------------------
 -- Conversion to and from FFI types

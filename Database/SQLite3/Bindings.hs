@@ -139,6 +139,12 @@ module Database.SQLite3.Bindings (
     mkCFilterCallback,
     mkCConflictCallback,
     c_sqlite3_changeset_apply,
+    c_sqlite3_changeset_start,
+    c_sqlite3changeset_next,
+    c_sqlite3changeset_op,
+    c_sqlite3changeset_new,
+    c_sqlite3changeset_old,
+    c_sqlite3changeset_finalize,
 ) where
 
 import Database.SQLite3.Bindings.Types
@@ -620,7 +626,7 @@ foreign import ccall "wrapper"
 foreign import ccall "sqlite3changeset_apply"
     c_sqlite3_changeset_apply
         :: Ptr CDatabase                -- ^ Apply change to "main" db of this handle
-        -> CInt                         -- ^ Size of changeset in bytes
+        -> CNumBytes                    -- ^ Size of changeset in bytes
         -> Ptr CChangeset               -- ^ Changeset blob
         -> FunPtr (CFilterCallback a)   -- ^ If it is not NULL, then for each table affected by at least one change
                                         --   in the changeset, the filter callback is invoked with
@@ -628,3 +634,41 @@ foreign import ccall "sqlite3changeset_apply"
         -> FunPtr (CConflictCallback a)
         -> Ptr a                        -- ^ First argument passed to FilterCallback and ConflictCallback
         -> IO CError
+
+-- | <https://www.sqlite.org/session/sqlite3changeset_start.html>
+foreign import ccall unsafe "sqlite3changeset_start"
+    c_sqlite3_changeset_start :: Ptr (Ptr CChangesetIter) -> CNumBytes -> Ptr CChangeset -> IO CError
+
+-- | <https://www.sqlite.org/session/sqlite3changeset_next.html>
+foreign import ccall unsafe "sqlite3changeset_next"
+    c_sqlite3changeset_next :: Ptr CChangesetIter -> IO CError
+
+-- | <https://www.sqlite.org/session/sqlite3changeset_op.html>
+foreign import ccall unsafe "sqlite3changeset_op"
+    c_sqlite3changeset_op
+        :: Ptr CChangesetIter
+        -> Ptr CString        -- ^ Table name
+        -> Ptr CInt           -- ^ Number of columns in table
+        -> Ptr CChangesetOp   -- ^ INSERT, DELETE, or UPDATE
+        -> Ptr Bool           -- ^ Is change indirect
+        -> IO CError
+
+-- | <https://www.sqlite.org/session/sqlite3changeset_new.html>
+foreign import ccall unsafe "sqlite3changeset_new"
+    c_sqlite3changeset_new
+        :: Ptr CChangesetIter
+        -> Ptr CInt           -- ^ Column number
+        -> Ptr (Ptr CValue)   -- ^ OUT: New value (or NULL pointer)
+        -> IO CError
+
+-- | <https://www.sqlite.org/session/sqlite3changeset_old.html>
+foreign import ccall unsafe "sqlite3changeset_old"
+    c_sqlite3changeset_old
+        :: Ptr CChangesetIter
+        -> Ptr CInt           -- ^ Column number
+        -> Ptr (Ptr CValue)   -- ^ OUT: Old value (or NULL pointer)
+        -> IO CError
+
+-- | <https://www.sqlite.org/session/sqlite3changeset_finalize.html>
+foreign import ccall unsafe "sqlite3changeset_finalize"
+    c_sqlite3changeset_finalize :: Ptr CChangesetIter -> IO CError
